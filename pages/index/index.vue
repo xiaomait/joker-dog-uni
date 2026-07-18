@@ -12,6 +12,9 @@
       />
     </view>
 
+    <!-- 投稿组件 -->
+    <QuoteSubmission />
+
     <view class="card">
       <view class="stamp">舔狗日记</view>
 
@@ -31,6 +34,7 @@
         <view class="quote">
           <typewriter-text :text="quoteText" />
         </view>
+        <text v-if="quoteAuthor" class="quote-author">—— {{ quoteAuthor }}</text>
       </view>
 
       <view class="actions">
@@ -60,17 +64,20 @@
       :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"
     />
   </view>
+
+  <!-- 消息通知 -->
+  <AppMessage />
 </template>
 
 <script setup>
 import { computed, nextTick, ref } from "vue"
 import { onLoad, onReady, onUnload } from "@dcloudio/uni-app"
-import { endpoints, offlineQuotes } from "@/config"
-import {
-  fetchWithTimeout,
-  pickOfflineQuote,
-  saveQuoteAsImage as exportQuoteAsImage
-} from "@/utils"
+import AppMessage from "@/components/message/app-message.vue"
+import QuoteSubmission from "@/components/quote-submission/quote-submission.vue"
+import { qrCodeUrl } from "@/config"
+import { getDogMessage } from "@/request"
+import { saveQuoteAsImage as exportQuoteAsImage } from "@/utils"
+import { getOfflineQuote } from "@/utils/offline-quote"
 
 const systemInfo = uni.getSystemInfoSync()
 const safeAreaInsets = systemInfo.safeAreaInsets || {
@@ -96,6 +103,7 @@ const safeAreaStyle = computed(() => ({
 }))
 
 const quoteText = ref("正在加载今天的深情发言...")
+const quoteAuthor = ref("")
 const statusText = ref("初始化中...")
 const statusLevel = ref("")
 const loading = ref(false)
@@ -158,8 +166,12 @@ function tryAutoPlayMusic() {
   audioContext.value.play()
 }
 
-function renderQuote(text) {
-  quoteText.value = text
+function renderQuote({ content, userName }) {
+  quoteText.value = content
+  quoteAuthor.value =
+    typeof userName === "string" && userName.trim()
+      ? userName.trim()
+      : "匿名用户"
 }
 
 async function loadQuote() {
@@ -169,25 +181,30 @@ async function loadQuote() {
 
   loading.value = true
   setStatus("正在读取今日语录...")
+  let loaded = false
 
   try {
-    for (const endpoint of endpoints) {
-      try {
-        const quote = await fetchWithTimeout(endpoint.url)
-        if (quote) {
-          renderQuote(quote)
-          statusText.value = "更新成功，继续保持深情。"
-          statusLevel.value = "ok"
-          return
-        }
-      } catch (error) {
-        console.warn(`${endpoint.name} 获取失败`, error)
-      }
+    const res = await getDogMessage()
+    const quote = res?.data
+    const content =
+      typeof quote?.content === "string" ? quote.content.trim() : ""
+    if (content) {
+      renderQuote({
+        userName: quote.userName,
+        content
+      })
+      statusText.value = "更新成功，继续保持深情。"
+      statusLevel.value = "ok"
+      loaded = true
+      return
     }
-
-    renderQuote(pickOfflineQuote(offlineQuotes))
-    setStatus("接口开小差了，已切换本地语录。", "warn")
+  } catch (error) {
+    console.warn("语录接口获取失败", error)
   } finally {
+    if (!loaded) {
+      renderQuote(getOfflineQuote())
+      setStatus("接口开小差了，已切换本地语录。", "warn")
+    }
     loading.value = false
   }
 }
@@ -204,6 +221,7 @@ async function saveQuoteAsImage() {
     const result = await exportQuoteAsImage({
       quoteText: quoteText.value,
       heroImage: heroImage.value,
+      qrCodeUrl,
       canvasWidth,
       canvasHeight,
       nextTick
@@ -374,6 +392,15 @@ onUnload(() => {
 .quote {
   font-size: 28px;
   line-height: 1.6;
+}
+
+.quote-author {
+  display: block;
+  margin-top: 8px;
+  color: #666;
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: right;
 }
 
 .actions {

@@ -1,105 +1,4 @@
-export function pickTextFromObject(obj) {
-  if (!obj || typeof obj !== "object") {
-    return ""
-  }
-
-  const preferredKeys = [
-    "data",
-    "text",
-    "content",
-    "msg",
-    "result",
-    "quote",
-    "dog",
-    "sentence",
-    "hitokoto"
-  ]
-
-  for (const key of preferredKeys) {
-    const value = obj[key]
-    if (typeof value === "string" && value.trim()) {
-      return value.trim()
-    }
-    if (Array.isArray(value) && value.length > 0) {
-      const fromArray = normalizeQuote(value[0])
-      if (fromArray) {
-        return fromArray
-      }
-    }
-    if (value && typeof value === "object") {
-      const fromNested = pickTextFromObject(value)
-      if (fromNested) {
-        return fromNested
-      }
-    }
-  }
-
-  for (const value of Object.values(obj)) {
-    if (typeof value === "string" && value.trim()) {
-      return value.trim()
-    }
-  }
-
-  return ""
-}
-
-export function normalizeQuote(payload) {
-  if (typeof payload === "string") {
-    return payload.trim()
-  }
-
-  if (Array.isArray(payload) && payload.length > 0) {
-    return normalizeQuote(payload[0])
-  }
-
-  if (payload && typeof payload === "object") {
-    return pickTextFromObject(payload)
-  }
-
-  return ""
-}
-
-export function fetchWithTimeout(url, timeout = 9000) {
-  return new Promise((resolve, reject) => {
-    uni.request({
-      url,
-      method: "GET",
-      timeout,
-      header: {
-        Accept: "application/json, text/plain;q=0.9, */*;q=0.8"
-      },
-      success: (response) => {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`HTTP ${response.statusCode}`))
-          return
-        }
-
-        const quote = normalizeQuote(response.data)
-        if (quote) {
-          resolve(quote)
-          return
-        }
-
-        if (typeof response.data === "string" && response.data.trim()) {
-          resolve(response.data.trim())
-          return
-        }
-
-        reject(new Error("Response text is empty"))
-      },
-      fail: reject
-    })
-  })
-}
-
-export function pickOfflineQuote(quotes = []) {
-  if (!Array.isArray(quotes) || quotes.length === 0) {
-    return ""
-  }
-
-  const idx = Math.floor(Math.random() * quotes.length)
-  return quotes[idx]
-}
+import QRCode from "qrcode"
 
 function wrapTextLines(ctx, text, maxWidth) {
   const lines = []
@@ -207,9 +106,22 @@ function downloadTempFile(tempFilePath, fileName) {
   link.click()
 }
 
+async function createQrCodeImage(url) {
+  if (!url) {
+    return ""
+  }
+
+  return QRCode.toDataURL(url, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 180
+  })
+}
+
 export async function saveQuoteAsImage({
   quoteText,
   heroImage,
+  qrCodeUrl,
   canvasWidth,
   canvasHeight,
   nextTick,
@@ -220,6 +132,7 @@ export async function saveQuoteAsImage({
   const outerPadding = 44
   const cardPadding = 42
   const imageSize = 260
+  const qrCodeSize = 60
   const cardWidth = width - outerPadding * 2
   const quoteBoxWidth = cardWidth - cardPadding * 2
   const quoteTextInsetX = 22
@@ -290,6 +203,39 @@ export async function saveQuoteAsImage({
     console.warn("图片读取失败", error)
     context.setFontSize(28)
     context.fillText("舔狗日记", imageX + 76, imageY + imageSize / 2 + 10)
+  }
+
+  if (qrCodeUrl) {
+    try {
+      const qrCodeDataUrl = await createQrCodeImage(qrCodeUrl)
+      const qrCodeInfo = await getImageInfo(qrCodeDataUrl)
+      const qrCodeSrc = normalizeCanvasImageSrc(
+        qrCodeInfo.path || qrCodeInfo.tempFilePath,
+        qrCodeDataUrl
+      )
+      // 二维码外框与上方语录框的右边缘对齐。
+      const qrCodeX = width - outerPadding - cardPadding - qrCodeSize - 5
+      const qrCodeY = height - outerPadding - qrCodeSize - 14
+
+      context.setFillStyle("#ffffff")
+      context.fillRect(
+        qrCodeX - 6,
+        qrCodeY - 6,
+        qrCodeSize + 12,
+        qrCodeSize + 12
+      )
+      context.setStrokeStyle("#111111")
+      context.setLineWidth(2)
+      context.strokeRect(
+        qrCodeX - 6,
+        qrCodeY - 6,
+        qrCodeSize + 12,
+        qrCodeSize + 12
+      )
+      context.drawImage(qrCodeSrc, qrCodeX, qrCodeY, qrCodeSize, qrCodeSize)
+    } catch (error) {
+      console.warn("二维码生成失败", error)
+    }
   }
 
   const quoteBoxX = cardX + cardPadding
