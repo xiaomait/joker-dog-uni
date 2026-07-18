@@ -89,10 +89,11 @@ function canvasToTempFilePath(canvasId, width, height) {
   })
 }
 
-function saveImageToAlbum(filePath) {
+function previewImage(filePath) {
   return new Promise((resolve, reject) => {
-    uni.saveImageToPhotosAlbum({
-      filePath,
+    uni.previewImage({
+      urls: [filePath],
+      current: filePath,
       success: resolve,
       fail: reject
     })
@@ -103,7 +104,13 @@ function downloadTempFile(tempFilePath, fileName) {
   const link = document.createElement("a")
   link.href = tempFilePath
   link.download = fileName
+  document.body.appendChild(link)
   link.click()
+  link.remove()
+}
+
+function isMobileH5() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
 }
 
 async function createQrCodeImage(url) {
@@ -273,15 +280,23 @@ export async function saveQuoteAsImage({
     canvasWidth.value,
     canvasHeight.value
   )
+  const tempFilePath = result?.tempFilePath || result?.path
+  if (!tempFilePath) {
+    throw new Error("未生成有效的图片临时路径")
+  }
   const fileDate = new Date().toISOString().slice(0, 10)
 
   // #ifdef H5
-  downloadTempFile(result.tempFilePath, `舔狗日记-${fileDate}.png`)
+  if (isMobileH5()) {
+    await previewImage(tempFilePath)
+    return { message: "图片已生成，请长按图片保存。", level: "ok" }
+  }
+  downloadTempFile(tempFilePath, `舔狗日记-${fileDate}.png`)
   return { message: "图片已生成，正在下载。", level: "ok" }
   // #endif
 
   // #ifndef H5
-  await saveImageToAlbum(result.tempFilePath)
-  return { message: "图片已保存到相册。", level: "ok" }
+  await previewImage(tempFilePath)
+  return { message: "图片已生成，请长按图片保存。", level: "ok" }
   // #endif
 }
