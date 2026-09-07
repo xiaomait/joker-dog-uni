@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [uni()],
   server: {
     proxy: {
-      "/api": {
+      "/app": {
         target: BASEURL,
         changeOrigin: true
       }
