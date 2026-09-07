@@ -16,7 +16,7 @@ export function getCaptcha() {
 
 export function submitMessageAudit(data) {
   return request({
-    url: "/app/message/audit",
+    url: "/app/message/audit/audit",
     method: "post",
     data
   })
